@@ -67,6 +67,23 @@ pub(crate) fn require_keyword(iter: &mut TokenIter, keyword: &str) -> Result<(),
     Err(syntax(token, format!("expected `{}`", keyword)))
 }
 
+pub(crate) fn require_value_from_args(iter: &mut TokenIter) -> Result<Value, SyntaxError> {
+    let token = next_token(iter)?;
+    if let TokenTree::Group(group) = &token {
+        let mut stream = group.stream().into_iter();
+        if let Some(tree) = stream.next() {
+            if let TokenTree::Literal(arg) = tree {
+                return parse_literal(&arg).ok_or_else(|| {
+                    let token = TokenTree::Literal(arg);
+                    syntax(token, "expected unsuffixed integer literal")
+                });
+            }
+        }
+    }
+
+    Err(syntax(token, "expected single argument"))
+}
+
 pub(crate) fn require_value(iter: &mut TokenIter) -> Result<Value, SyntaxError> {
     let mut token = next_token(iter)?;
 
@@ -142,6 +159,7 @@ pub(crate) fn require_end(iter: &mut TokenIter) -> Result<(), SyntaxError> {
 pub(crate) fn validate_range(
     begin: Value,
     end: Value,
+    step_by: Option<Value>,
     inclusive: bool,
 ) -> Result<Range, SyntaxError> {
     let kind = if begin.kind == end.kind {
@@ -188,6 +206,31 @@ pub(crate) fn validate_range(
         });
     };
 
+    let step_by = if let Some(step_by) = step_by {
+        if kind != Kind::Int {
+            return Err(SyntaxError {
+                message: "expected integer range".to_owned(),
+                span: step_by.span,
+            });
+        }
+        if step_by.kind != Kind::Int {
+            return Err(SyntaxError {
+                message: "expected integer literal".to_owned(),
+                span: step_by.span,
+            });
+        }
+        if step_by.int == 0 {
+            return Err(SyntaxError {
+                message: "step cannot be zero".to_owned(),
+                span: step_by.span,
+            });
+        }
+
+        step_by.int
+    } else {
+        1
+    };
+
     Ok(Range {
         begin: begin.int,
         end: end.int,
@@ -196,6 +239,7 @@ pub(crate) fn validate_range(
         suffix,
         width: cmp::min(begin.width, end.width),
         radix,
+        step_by: step_by as usize,
     })
 }
 

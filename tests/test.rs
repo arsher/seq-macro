@@ -286,3 +286,24 @@ fn test_nested() {
 
     assert_eq!(vec, ["T1", "T1 T2", "T1 T2 T3"]);
 }
+
+mod test_step_by_enum {
+    use seq_macro::seq;
+
+    seq!(N in 2000..2050.step_by(10) {
+        #[repr(u32)]
+        #[derive(Copy, Clone, PartialEq, Debug)]
+        pub enum Enum {
+            #(
+                Variant~N = N,
+            )*
+        }
+    });
+
+    #[test]
+    fn test() {
+        let interrupt = Enum::Variant2020;
+        assert_eq!(interrupt as u32, 2020);
+        assert_eq!(interrupt, Enum::Variant2020);
+    }
+}

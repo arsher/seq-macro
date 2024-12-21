@@ -89,7 +89,8 @@ mod parse;
 
 use crate::parse::*;
 use proc_macro::{Delimiter, Group, Ident, Literal, Span, TokenStream, TokenTree};
-use std::char;
+use std::{char, fmt};
+use std::fmt::Error;
 use std::iter::{self, FromIterator};
 
 #[proc_macro]
@@ -108,6 +109,7 @@ struct Range {
     suffix: String,
     width: usize,
     radix: Radix,
+    step_by: usize,
 }
 
 struct Value {
@@ -158,9 +160,9 @@ impl<'a> IntoIterator for &'a Range {
         match self.kind {
             Kind::Int | Kind::Byte => {
                 if self.inclusive {
-                    Box::new((self.begin..=self.end).map(splice))
+                    Box::new((self.begin..=self.end).step_by(self.step_by).map(splice))
                 } else {
-                    Box::new((self.begin..self.end).map(splice))
+                    Box::new((self.begin..self.end).step_by(self.step_by).map(splice))
                 }
             }
             Kind::Char => {
@@ -186,10 +188,18 @@ fn seq_impl(input: TokenStream) -> Result<TokenStream, SyntaxError> {
     require_punct(&mut iter, '.')?;
     let inclusive = require_if_punct(&mut iter, '=')?;
     let end = require_value(&mut iter)?;
+    let has_step_by = require_if_punct(&mut iter, '.')?;
+    let step_by = if has_step_by {
+        require_keyword(&mut iter, "step_by")?;
+        let step_by = require_value_from_args(&mut iter)?;
+        Some(step_by)
+    } else {
+        None
+    };
     let body = require_braces(&mut iter)?;
     require_end(&mut iter)?;
 
-    let range = validate_range(begin, end, inclusive)?;
+    let range = validate_range(begin, end, step_by, inclusive)?;
 
     let mut found_repetition = false;
     let expanded = expand_repetitions(&var, &range, body.clone(), &mut found_repetition);
